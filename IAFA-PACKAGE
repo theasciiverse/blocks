@@ -1,0 +1,15 @@
+Title:          block-0.6.tgz
+Version:        0.6  
+Description:    Small text based maze game
+Author:         marc welz, marc@mbs.bch.uct.ac.za,
+		Ovis, ovis@ok.aiva.lt
+Maintained-by:  marc welz (author),
+		Ovis
+Maintained-at:  sunsite.unc.edu (games/strategy) 
+                tsx-11.mit.edu  (sources/usr.games)
+Platforms:      linux - but should compile under most unices with ncurses 
+                written in C
+Copying-Policy: GPL  
+                Freely Redistributable
+Keywords:       Game,Linux,terminal based 
+

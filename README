@@ -1,0 +1,78 @@
+Blocks - a small tty based games using ncurses 
+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+=+
+
+ Written by marc welz (rather : kluged by marc welz) - Redistribution is
+ subject to the GNU public license.
+
+Installation 
+------------
+ 
+ To Compile :
+
+<make block>               to make the game 
+<make bed>                 to make the level editor
+<make install>             to install the entire game on your system
+
+ If you would rather use curses (instead of ncurses) do :
+
+<make cblock>
+<make cbed>
+
+ Some installations have trouble finding some of the #defines when
+ using curses - the only solution (I know of) to that snag is to use
+ ncurses ;-).
+
+ Other options include :
+
+<make nocolor>             to disable colours
+<make old>                 to run with older versions of ncurses
+
+ Have a look at the makefile -- it tries to be helpful.
+
+
+Running the Game
+----------------
+
+ To run the game simply type <block>
+ To run the game with 'another' as level type <block another>
+ To edit level complex type <bed complex>
+
+ Blocks comes with 4 levels (default, pyramid, complex and another, each
+ stored in a seperate file - they can be modified or new levels added by
+ using bed).
+
+ For help try <block -h> or hit ? when in the game. When running bed you
+ can also try ?.
+
+Notes
+-----
+
+ Good idea to restrict file names to 20 chars.
+
+ The editor tries to fill the entire screen - so if you write a level on
+ a big screen, you will not be able to play it on a small one.  And
+ remember to save the game you are editing before exiting.
+
+ Probably contains bugs - but if I knew what they were they would not be
+ there ...
+
+Maps
+----
+ If you make the MAP for this game. Please send map to: ovis@ok.aiva.lt,
+ or sco@usa.net. Thanks.
+
+AT&T UNIX PC
+------------
+ I'm compiled this game on AT&T UNIX PC (UNIX v3.51) sucsess
+ If need this versions just write to me ovis@ok.aiva.lt
+  
+Thanks
+------
+  
+ A big THANK YOU goes to Joey Hess (jeh22@conell.edu) who contributed
+ the pyramid level, wrote the man pages for the game and pointed out a
+ couple of minor bugs.
+
+marc (marc@mbs.bch.uct.ac.za)
+
+
