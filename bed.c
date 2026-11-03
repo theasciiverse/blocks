@@ -8,6 +8,8 @@
 
 #include <string.h>
 #include <ctype.h>
+#include <stdlib.h>
+#include "paths.h"
 
 /*heck - i started writing the thing using curses - then 
          switched to ncurses, did not seem to make much
@@ -29,17 +31,26 @@ struct game{
   char diff;
 };
 
+int savegame(struct game *s);
+int loadnext(struct game *s,char *fname);
+int drawsolid(struct game *s);
+
+/* Asciiverse: levels are written to the player's own levels folder
+   (paths.h), under the name given, never into the game's install */
+static char savepath[4096];
+
 int main(int argc,char **argv){
-  struct game cw;
-  int myx,myy;
+  static struct game cw;
+  int myx,myy,xo,yo;
   int in;
-  char filename[40];
+  char filename[4096];
+  char *base;
+  int diff=0;
   FILE *fp;
   int unsaved=0;
 
   if(argc>1){
-    strcpy(filename,argv[1]);
-    filename[39]='\0';
+    snprintf(filename,sizeof filename,"%s",argv[1]);
   #ifdef DEBUG
     printf("going to check out file %s\n",filename);
     sleep(10);
@@ -53,8 +64,20 @@ int main(int argc,char **argv){
                                     ,cw.fname[strlen(cw.fname)-1]);  
       sleep(2);
     #endif 
-    if(iscntrl(cw.fname[strlen(cw.fname)-1]))cw.fname[strlen(cw.fname)-1]='\0';
-    strcpy(filename,cw.fname);
+    if(strlen(cw.fname)&&iscntrl(cw.fname[strlen(cw.fname)-1]))cw.fname[strlen(cw.fname)-1]='\0';
+    snprintf(filename,sizeof filename,"%s",cw.fname);
+  }
+
+  /* the level's name without folder or .block, kept in the file itself */
+  base=strrchr(filename,'/');
+  base=base?base+1:filename;
+  if(strlen(base)>6&&!strcmp(base+strlen(base)-6,".block"))base[strlen(base)-6]='\0';
+  if(strchr(filename,'/'))snprintf(savepath,sizeof savepath,"%s.block",filename);
+  else snprintf(savepath,sizeof savepath,"%slevels/%s.block",user_dir(),base);
+  {
+    char found[4096];
+    find_level(found,sizeof found,filename);
+    snprintf(filename,sizeof filename,"%s",found);
   }
 
   if(NULL==(fp=fopen(filename,"r"))){
@@ -62,11 +85,13 @@ int main(int argc,char **argv){
     printf("\nEnter the name of the game you wish to create  : ");
     fgets(cw.name,NAMEL,stdin);
 
-    if(iscntrl(cw.name[strlen(cw.name)-1]))cw.name[strlen(cw.name)-1]='\0';
-    strcpy(cw.fname,filename);
+    if(strlen(cw.name)&&iscntrl(cw.name[strlen(cw.name)-1]))cw.name[strlen(cw.name)-1]='\0';
+    snprintf(cw.fname,FNAMEL,"%s",base);
   
     printf("\nEnter the difficulty level : ");
-    scanf("%d",&(cw.diff));
+    if(scanf("%d",&diff)!=1)diff=1;
+    cw.diff=diff;   /* Asciiverse: was read straight into one char */
+    cw.xdim=0;
 
     for(myx=0;myx<CHARL;myx++){
       for(myy=0;myy<CHARL;myy++){
@@ -86,16 +111,28 @@ int main(int argc,char **argv){
   noecho();    /*for one char at a time without echo*/
  
   keypad(stdscr,TRUE);
+
+  /* Asciiverse: a new level is the size of the game's own (78 by 23, so
+     it plays on an 80 by 25 terminal), a loaded one keeps its size; the
+     cursor moves inside it, drawn centred as the game draws it */
+  if(cw.xdim<=0||cw.ydim<=0){
+    cw.xdim=COLS-2<78?COLS-2:78;
+    cw.ydim=LINES-2<23?LINES-2:23;
+  }
+  if(COLS<cw.xdim||LINES<cw.ydim){
+    endwin();
+    printf("\nThis level is %d by %d; the terminal needs to be at least that big\n",cw.xdim,cw.ydim);
+    return 1;
+  }
+  xo=(COLS-(cw.xdim))/2;
+  yo=(LINES-(cw.ydim))/2;
  
   drawsolid(&cw);
  
   refresh();
 
-    cw.xdim=COLS-2;
-    cw.ydim=LINES-2;
-
-    myx=COLS/2;
-    myy=LINES*2/3;
+    myx=cw.xdim/2;
+    myy=cw.ydim*2/3;
   
   /*perform the sanity checks here*/
   /*ie screen too small etc...*/
@@ -106,52 +143,52 @@ int main(int argc,char **argv){
         switch(in){
           case KEY_LEFT :
           case '4' :
-          case 'h' : if(--myx==0)myx=COLS-2;
+          case 'h' : if(--myx<0)myx=cw.xdim-1;
                      break;
           case KEY_DOWN :
-          case 'j' : if(++myy==LINES-1)myy=1;
+          case 'j' : if(++myy==cw.ydim)myy=0;
                      break;
           case KEY_UP :
           case '8' :
-          case 'k' : if(--myy==0)myy=LINES-2;
+          case 'k' : if(--myy<0)myy=cw.ydim-1;
                      break;
           case KEY_RIGHT :
-          case 'l' : if(++myx==COLS-1)myx=1;
+          case 'l' : if(++myx==cw.xdim)myx=0;
                      break;
           case '3' :
-          case '#' : mvaddch(myy,myx,'#');
-                     cw.field[myy-1][myx-1]='#';
-                     if(++myx==COLS-1)myx=1;
+          case '#' : mvaddch(yo+myy,xo+myx,'#');
+                     cw.field[myy][myx]='#';
+                     if(++myx==cw.xdim)myx=0;
                      unsaved=1;
                      break;
           case '|' :
-          case '\\': mvaddch(myy,myx,'|');
-                     cw.field[myy-1][myx-1]='|';
-                     if(++myx==COLS-1)myx=1;
+          case '\\': mvaddch(yo+myy,xo+myx,'|');
+                     cw.field[myy][myx]='|';
+                     if(++myx==cw.xdim)myx=0;
                      unsaved=1;
                      break;
           case '1' :
-          case '!' : mvaddch(myy,myx,'!');
-                     cw.field[myy-1][myx-1]='!';
-                     if(++myx==COLS-1)myx=1;
+          case '!' : mvaddch(yo+myy,xo+myx,'!');
+                     cw.field[myy][myx]='!';
+                     if(++myx==cw.xdim)myx=0;
                      unsaved=1;
                      break; 
           case '2' :
-          case '@' : mvaddch(myy,myx,'@');
-                     cw.field[myy-1][myx-1]='@';
-                     if(++myx==COLS-1)myx=1;
+          case '@' : mvaddch(yo+myy,xo+myx,'@');
+                     cw.field[myy][myx]='@';
+                     if(++myx==cw.xdim)myx=0;
                      unsaved=1;
                      break; 
           case '+' :
-          case '=' : mvaddch(myy,myx,'=');
-                     cw.field[myy-1][myx-1]='=';
-                     if(++myx==COLS-1)myx=1;
+          case '=' : mvaddch(yo+myy,xo+myx,'=');
+                     cw.field[myy][myx]='=';
+                     if(++myx==cw.xdim)myx=0;
                      unsaved=1;
                      break; 
           case '-' :
-          case '_' : mvaddch(myy,myx,'-');
-                     cw.field[myy-1][myx-1]='-';
-                     if(++myx==COLS-1)myx=1;
+          case '_' : mvaddch(yo+myy,xo+myx,'-');
+                     cw.field[myy][myx]='-';
+                     if(++myx==cw.xdim)myx=0;
                      unsaved=1;
                      break; 
           case '6' : in='^';
@@ -163,20 +200,17 @@ int main(int argc,char **argv){
           case '<' :
           case 'v' :
           case '^' :
-          case '>' : mvaddch(myy,myx,in);
-                     cw.field[myy-1][myx-1]=in;
-                     if(++myx==COLS-1)myx=1;
+          case '>' : mvaddch(yo+myy,xo+myx,in);
+                     cw.field[myy][myx]=in;
+                     if(++myx==cw.xdim)myx=0;
                      unsaved=1;
                      break;
           case 's' :
           case 'w' :
           case 'S' :
           case 'W' : move(0,1);
-                     printw("Saving Game %s as File %s (%d by %d)\n",cw.name,cw.fname,cw.xdim,cw.ydim);
-                     if(COLS-2>CHARL||LINES-2>CHARL){
-                       printw("WARNING - the game you are writing is too big"); 
-                     }
-                     savegame(cw);
+                     printw("Saving Game %s as File %s (%d by %d)\n",cw.name,savepath,cw.xdim,cw.ydim);
+                     if(savegame(&cw))printw("Save failed: %s",savepath);
                      unsaved=0;
 
                      break;
@@ -209,9 +243,9 @@ int main(int argc,char **argv){
           case 'q' :
                      break;
           default  : /*if(isalpha(in)){
-                       cw.field[myy-1][myx-1]=in;
-                       mvaddch(myy,myx,in);
-                       if(++myx==COLS-1)myx=1;
+                       cw.field[myy][myx]=in;
+                       mvaddch(yo+myy,xo+myx,in);
+                       if(++myx==cw.xdim)myx=0;
                        unsaved=1;
                      }
                      else{ */
@@ -219,7 +253,7 @@ int main(int argc,char **argv){
                  /*  }*/
                      break;
         }
-        move(myy,myx);
+        move(yo+myy,xo+myx);
         refresh();
       }  
       if(unsaved&&in=='q'){
@@ -238,34 +272,33 @@ int main(int argc,char **argv){
   return 0;
 }
 
-int savegame(struct game s){
+int savegame(struct game *s){
   FILE *fp;
   int  i,j;
   int  retval=0;
   
-  fp=fopen(s.fname,"w");
+  fp=fopen(savepath,"w");
   if(fp!=NULL){
-    for(i=0;i<NAMEL;i++)fputc(s.name[i],fp);
-    for(i=0;i<FNAMEL;i++)fputc(s.fname[i],fp);
-    fputc(s.xdim,fp);
-    fputc(s.ydim,fp);
-    fputc(s.diff,fp);
+    for(i=0;i<NAMEL;i++)fputc(s->name[i],fp);
+    for(i=0;i<FNAMEL;i++)fputc(s->fname[i],fp);
+    fputc(s->xdim,fp);
+    fputc(s->ydim,fp);
+    fputc(s->diff,fp);
     for(i=0;i<CHARL;i++){
       for(j=0;j<CHARL;j++){
-        fputc(s.field[i][j],fp);
+        fputc(s->field[i][j],fp);
       }
     }
     fclose(fp);
   }
   else{
-    printf("Save operation failed\n");
     retval=1;
   }
   return retval;
 }
 
 int loadnext(struct game *s,char *fname){
-  static count=0;
+  static int count=0;
   FILE *fp;
   int i,j;
   int retval=0;

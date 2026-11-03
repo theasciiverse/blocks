@@ -12,6 +12,8 @@
 
 #include <string.h>
 #include <stdlib.h>
+#include <ctype.h>
+#include "paths.h"
 
 /*heck - i started writing the thing using curses - then 
          switched to ncurses, did not seem to make much
@@ -32,7 +34,10 @@
 #define FF_HOME    4 
 #define FF_OVEN    5
 
-#define SCORE_FILE "/usr/games/lib/save/score"
+/* Asciiverse: scores, progress and made levels live in the player's own
+   folder, the game's levels beside the binary (paths.h) */
+static char score_file[4096];
+#define SCORE_FILE score_file
 /* uncomment if you like lots of diagnostic garbage */
 /* #define DEBUG 1                                  */
 
@@ -56,6 +61,9 @@ struct ScoreStruct {
 /* the start of utterly unreadable, incomprehensible,
    nonmodular, inefficient code */
 int CheckHiScore();
+int loadnext(struct game *s,char *fname);
+int drawmob(struct game *s);
+int drawsolid(struct game *s);
 
 int pyr=1;
 int flashi=0;
@@ -63,8 +71,8 @@ int flashi=0;
 int main(int argc,char **argv){
   int in;
   int myx,myy,i,j;
-  char lname[60],*cptr;
-  char tmp[60];
+  char lname[4096],*cptr;
+  char path[4096];
   int xo,yo,mvv;
   char mover=0,alternate=0,jumped=1;
   long score=0,moves=0;
@@ -78,13 +86,14 @@ int main(int argc,char **argv){
   char movei=0;
   char *username;
   FILE *fp; 
-  char buf[60];
+  char buf[4096];
   int level=0;
   
 
   struct game cw;
 
   i=argc-1;
+  snprintf(score_file,sizeof score_file,"%sscore",user_dir());
   /*copy a resonable default to this one*/
   if ((fp=fopen(SCORE_FILE,"rb")) != NULL) {
     fread(High,sizeof(High),1,fp);
@@ -92,26 +101,21 @@ int main(int argc,char **argv){
   } 
 
   
-  username = (char *) getlogin();
-  sprintf(buf,"/usr/games/lib/save/%s",username);
+  username = (char *) player_name();
+  snprintf(buf,sizeof buf,"%sprogress",user_dir());
   fp = fopen( buf , "rt");
   if( fp != NULL ) {
-      fscanf(fp , "%d", &level);
+      if (fscanf(fp , "%d", &level) != 1) level=0;
       fclose(fp);
   } 
-  if( level != 0 ) {
-      sprintf( buf , "/usr/games/lib/%d.block" , level);
-  } else {
-      sprintf( buf , "/usr/games/lib/1.block");
-      level=1;
-  }
-  strcpy(lname,buf); 
+  if( level <= 0 ) level=1;
+  snprintf(lname,sizeof lname,"%d",level);
     
   while(i){
     cptr=argv[i--];
     j=0;
     if(cptr[0]!='-'){
-      strcpy(lname,cptr);
+      snprintf(lname,sizeof lname,"%s",cptr);
     }
     else{
       while(cptr[j]!='\0'){
@@ -133,7 +137,7 @@ int main(int argc,char **argv){
                      break;
           case 'm' : movei=1;
                      break;
-          case 'g' : strcpy(lname,&cptr[j+1]);
+          case 'g' : snprintf(lname,sizeof lname,"%s",&cptr[j+1]);
                      j=strlen(cptr)-1; 
                      #ifdef DEBUG
                        printf("We are going to read file %s\n",lname);
@@ -164,26 +168,22 @@ int main(int argc,char **argv){
 
   done=0;
 
-  switch(loadnext(&cw,lname)){
-    case 0 : 
-#ifdef DEBUG
-             printf("Loaded game %s\n",cw.name);
-#endif
-             break;
-    case 1 : 
-    case 2 : printf("Hmmm... trouble reading file %s\n",lname);
-             sprintf(tmp,"/usr/games/lib/%s.block",lname);
-             if(loadnext(&cw,tmp)){
-               printf("Could not read %s either\n",tmp); 
-               if(loadnext(&cw,"default")){
-                 printf("Could not even read file default - giving up\n"); 
-                 exit(1);
-               }
-             }
-             else{
-               printf("Ahhh... managed to load game from file %s\n",tmp);
-             }
-             break;
+  find_level(path,sizeof path,lname);
+  if(loadnext(&cw,path)){
+    /* Asciiverse: past the last numbered level the game is won */
+    char *end;
+    long n=strtol(lname,&end,10);
+    if(*end=='\0'&&n>1){
+      printf("\nThat was the last level: all %ld completed. Well done!\n",n-1);
+      snprintf(buf,sizeof buf,"%sprogress",user_dir());
+      if((fp=fopen(buf,"wt"))!=NULL){
+        fprintf(fp,"%d",1);
+        fclose(fp);
+      }
+      exit(0);
+    }
+    printf("Could not read level %s (%s)\n",lname,path);
+    exit(1);
   } 
 
   if(movei){
@@ -216,7 +216,8 @@ int main(int argc,char **argv){
 #endif
 
   keypad(stdscr,TRUE);
-  speed=60000/baudrate();
+  speed=baudrate()>0 ? 60000/baudrate() : 1;   /* Asciiverse: no 0 */
+  if(speed<1)speed=1;
 
 #ifdef NEW
   typeahead(-1);
@@ -253,6 +254,15 @@ int main(int argc,char **argv){
   if(movei)mvprintw(0,1,"Game has to be completed in %d00 moves",cw.diff);
   
   drawsolid(&cw);
+  /* Asciiverse: blocks and player on the screen from the start, not only
+     after the first key */
+  drawmob(&cw);
+#ifdef UCOL
+  mvaddch(myy+yo,myx+xo,'+'|COLOR_PAIR(FF_ME));
+#else
+  mvaddch(myy+yo,myx+xo,'+');
+#endif
+  refresh();
 
   while(!done){
     if( (in=getch()) == 'q' ) break;
@@ -437,7 +447,7 @@ int main(int argc,char **argv){
                    printw("while jumps are controlled by     \t\t H L 4 6 or z x\n\n");
                    printw("Redraw and quit respectively are  \t\t   R q   \n");
                    printw("To create your own maze use       \t\t   bed   \n");
-                   printw("while the flags are shown by      \t\tblocks -h\n\n"); 
+                   printw("while the flags are shown by      \t\t block -h\n\n"); 
                    printw("\t\tNote : the maze wraps around.\n");
                    refresh();
                    getch();
@@ -477,15 +487,15 @@ int main(int argc,char **argv){
       }
       mvprintw(LINES-1,1,"Score : %ld0   \tMoves : %ld  ",score,moves);
 
-      if(cw.field[(myy+1)%cw.xdim][myx]=='!'){
+      if(cw.field[(myy+1)%cw.ydim][myx]=='!'){
         cw.field[(myy+1)%cw.ydim][myx]=':';
         drawsolid(&cw);
       }
-      else if(cw.field[(myy+1)%cw.xdim][myx]=='|'){
+      else if(cw.field[(myy+1)%cw.ydim][myx]=='|'){
         cw.field[(myy+1)%cw.ydim][myx]='!';
         drawsolid(&cw);
       }
-      else if(cw.field[(myy+1)%cw.xdim][myx]==':'){
+      else if(cw.field[(myy+1)%cw.ydim][myx]==':'){
         cw.field[(myy+1)%cw.ydim][myx]='.';
         drawsolid(&cw);
       }
@@ -539,7 +549,7 @@ int main(int argc,char **argv){
 	       printw( "\t\t %2d. %8s       %4d         %5ld       %5ld\n", i+1, (char *)High[i].Name,High[i].Level,High[i].Score,High[i].Moves);
 	     }
 	     level++;
-             sprintf(buf,"/usr/games/lib/save/%s",username);
+             snprintf(buf,sizeof buf,"%sprogress",user_dir());
 	     fp = fopen(buf,"wt");
 	     if( fp != NULL ) {
 	         fprintf(fp , "%d", level);
@@ -557,7 +567,7 @@ int main(int argc,char **argv){
   endwin();
                /*Hope they come back again*/
   
-  sprintf(lname,"/usr/games/lib/%d.block",level);
+  snprintf(lname,sizeof lname,"%d",level);
   /* yuck - a messy kludge - the fname stores the name of the next game*/
   moves=0;
   if(looper)looper=2;    
@@ -569,7 +579,7 @@ int main(int argc,char **argv){
 }
 
 int loadnext(struct game *s,char *fname){
-  static count=0;
+  static int count=0;
   FILE *fp;
   int i,j;
   int retval=0;
@@ -756,7 +766,8 @@ long Moves;
 				High[j].Moves = High[j-1].Moves;
 				strncpy(High[j].Name,High[j-1].Name,10);
 			}
-		cuserid((char *) High[i].Name);
+		strncpy(High[i].Name,player_name(),sizeof High[i].Name-1);
+		High[i].Name[sizeof High[i].Name-1]='\0';
 		High[i].Score = ThisScore;
 		High[i].Level = Level;
 		High[i].Moves = Moves;
