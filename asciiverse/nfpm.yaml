@@ -1,0 +1,46 @@
+# System packages (.deb, .rpm, .apk, Arch) for Blocks, built by nfpm from
+# the same static binaries as the av archive. The release workflow sets
+# VERSION, RELEASE (our packaging release) and ARCH (amd64 or arm64).
+# The levels go to /usr/share/blocks, where the game looks when there is
+# no levels/ beside it (paths.c); players' scores, progress and own levels
+# stay in ~/.local/share/blocks.
+#
+# No .desktop file on purpose: av is the one place titles are started from.
+name: blocks
+arch: ${ARCH}
+platform: linux
+version: ${VERSION}
+release: ${RELEASE}
+section: games
+priority: optional
+maintainer: Asciiverse <packages@asciiverse.sh>
+vendor: Asciiverse
+homepage: https://github.com/theasciiverse/blocks
+license: GPL-1.0-or-later
+description: |
+  Side-view block-pushing maze game with gravity, and its level editor.
+  Push blocks into place, jump, pass one-way doors the blocks cannot, eat
+  the sweets and reach the exit, in a maze that wraps around. Marc Welz's
+  sunsite game of 1999, with Ovis's levels; packaged by Asciiverse.
+contents:
+  - src: out/block
+    dst: /usr/bin/block
+    file_info: { mode: 0755 }
+  - src: out/bed
+    dst: /usr/bin/bed
+    file_info: { mode: 0755 }
+  - src: out/levels/
+    dst: /usr/share/blocks/
+    type: tree
+  - src: block.6
+    dst: /usr/share/man/man6/block.6
+    file_info: { mode: 0644 }
+  - src: bed.6
+    dst: /usr/share/man/man6/bed.6
+    file_info: { mode: 0644 }
+  - src: README
+    dst: /usr/share/doc/blocks/README
+    file_info: { mode: 0644 }
+  - src: PATCHES.md
+    dst: /usr/share/doc/blocks/PATCHES.md
+    file_info: { mode: 0644 }
